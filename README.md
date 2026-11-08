@@ -68,6 +68,8 @@ python pet.py
 - **改台词**：电脑版在 `pet.py` 的 `LINES_*`，安卓版在 `PetService.java` 的 `LINES_*`
 - **改大小**：电脑版右键菜单；安卓版 App 首页「大小」四档
 
+更多细节（环境、发版、已知坑）见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 技术说明
 
 - 电脑版不依赖任何 GUI 框架，直接调 user32/gdi32 的 `UpdateLayeredWindow`，
