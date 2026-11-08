@@ -1,0 +1,194 @@
+{
+  "shengqi": {
+    "file": "shengqi.png",
+    "size": [
+      445,
+      420
+    ],
+    "category": "angry"
+  },
+  "xianqi": {
+    "file": "xianqi.png",
+    "size": [
+      421,
+      420
+    ],
+    "category": "baka"
+  },
+  "huachi": {
+    "file": "huachi.png",
+    "size": [
+      446,
+      420
+    ],
+    "category": "color"
+  },
+  "jiazai": {
+    "file": "jiazai.png",
+    "size": [
+      372,
+      420
+    ],
+    "category": "confused"
+  },
+  "wenhao": {
+    "file": "wenhao.png",
+    "size": [
+      436,
+      420
+    ],
+    "category": "confused"
+  },
+  "jiaban": {
+    "file": "jiaban.png",
+    "size": [
+      432,
+      420
+    ],
+    "category": "cpu"
+  },
+  "ganfan": {
+    "file": "ganfan.png",
+    "size": [
+      426,
+      420
+    ],
+    "category": "daily"
+  },
+  "buyao": {
+    "file": "buyao.png",
+    "size": [
+      456,
+      420
+    ],
+    "category": "fool"
+  },
+  "yaoqian": {
+    "file": "yaoqian.png",
+    "size": [
+      414,
+      420
+    ],
+    "category": "givemoney"
+  },
+  "deyi": {
+    "file": "deyi.png",
+    "size": [
+      434,
+      420
+    ],
+    "category": "happy"
+  },
+  "ok": {
+    "file": "ok.png",
+    "size": [
+      421,
+      420
+    ],
+    "category": "happy"
+  },
+  "piaole": {
+    "file": "piaole.png",
+    "size": [
+      399,
+      420
+    ],
+    "category": "happy"
+  },
+  "bixin": {
+    "file": "bixin.png",
+    "size": [
+      462,
+      420
+    ],
+    "category": "like"
+  },
+  "maozhua": {
+    "file": "maozhua.png",
+    "size": [
+      447,
+      420
+    ],
+    "category": "meow"
+  },
+  "zaoshanghao": {
+    "file": "zaoshanghao.png",
+    "size": [
+      441,
+      420
+    ],
+    "category": "morning"
+  },
+  "qiurao": {
+    "file": "qiurao.png",
+    "size": [
+      431,
+      420
+    ],
+    "category": "sad"
+  },
+  "yun": {
+    "file": "yun.png",
+    "size": [
+      463,
+      420
+    ],
+    "category": "sad"
+  },
+  "zhenjing": {
+    "file": "zhenjing.png",
+    "size": [
+      414,
+      420
+    ],
+    "category": "see"
+  },
+  "haixiu": {
+    "file": "haixiu.png",
+    "size": [
+      462,
+      420
+    ],
+    "category": "shy"
+  },
+  "toukan": {
+    "file": "toukan.png",
+    "size": [
+      435,
+      420
+    ],
+    "category": "shy"
+  },
+  "wuyu": {
+    "file": "wuyu.png",
+    "size": [
+      402,
+      420
+    ],
+    "category": "sigh"
+  },
+  "shuijiao": {
+    "file": "shuijiao.png",
+    "size": [
+      506,
+      420
+    ],
+    "category": "sleep"
+  },
+  "xia": {
+    "file": "xia.png",
+    "size": [
+      448,
+      420
+    ],
+    "category": "surprised"
+  },
+  "tangping": {
+    "file": "tangping.png",
+    "size": [
+      602,
+      420
+    ],
+    "category": "work"
+  }
+}

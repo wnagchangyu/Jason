@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">大肥鱼桌宠</string>
+    <string name="btn_start">叫她出来</string>
+    <string name="btn_stop">让她回去</string>
+    <string name="btn_permission">开启悬浮窗权限</string>
+    <string name="title">大肥鱼桌宠</string>
+    <string name="subtitle">一只会飘在屏幕上的大肥鱼</string>
+</resources>

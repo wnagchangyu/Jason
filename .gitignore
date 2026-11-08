@@ -1,0 +1,23 @@
+# 运行时产生的文件
+dafeiyu-pet/config.json
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Android
+dafeiyu-pet-android/local.properties
+dafeiyu-pet-android/.gradle/
+dafeiyu-pet-android/**/build/
+dafeiyu-pet-android/.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
