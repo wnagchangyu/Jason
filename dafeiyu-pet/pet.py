@@ -294,15 +294,15 @@ BODY_POSES = {
 }
 
 BODY_ALIAS = {
-    "deyi": "body_happy", "ok": "body_happy", "piaole": "body_happy",
-    "bixin": "body_happy", "maozhua": "body_happy", "zaoshanghao": "body_happy",
-    "ganfan": "body_happy", "huachi": "body_happy",
-    "haixiu": "body_shy", "toukan": "body_shy", "shuijiao": "body_shy",
-    "tangping": "body_shy", "yun": "body_shy", "qiurao": "body_shy",
-    "yaoqian": "body_shy",
-    "xia": "body_hop", "zhenjing": "body_hop", "shengqi": "body_hop",
-    "jiazai": "body_lean", "wenhao": "body_lean", "wuyu": "body_lean",
-    "buyao": "body_lean", "xianqi": "body_lean", "jiaban": "body_lean",
+    "deyi": "deyi", "ok": "deyi", "piaole": "deyi", "maozhua": "deyi",
+    "zaoshanghao": "deyi", "ganfan": "deyi", "huachi": "haixiu",
+    "bixin": "bixin", "haixiu": "haixiu", "toukan": "haixiu",
+    "shuijiao": "shuijiao", "tangping": "shuijiao", "yun": "shuijiao",
+    "yaoqian": "shuijiao",
+    "shengqi": "shengqi", "xianqi": "shengqi", "buyao": "shengqi",
+    "xia": "wenhao", "zhenjing": "wenhao", "jiazai": "wenhao",
+    "wenhao": "wenhao", "wuyu": "wenhao", "jiaban": "wenhao",
+    "qiurao": "haixiu",
 }
 
 
@@ -327,11 +327,21 @@ def _body_variant(base, angle=0.0, scale=1.0, dy=0.0):
 
 
 def load_body_sprites():
-    path = os.path.join(FULL_DIR, "body.png")
-    if not os.path.exists(path):
-        return {}
-    base = Image.open(path).convert("RGBA")
-    return {name: _body_variant(base, a, s, d) for name, (a, s, d) in BODY_POSES.items()}
+    """全身表情：build_faces.py 生成的一组（同一身体，不同五官）。"""
+    expr_dir = os.path.join(FULL_DIR, "expressions")
+    out = {}
+    if os.path.isdir(expr_dir):
+        for fn in sorted(os.listdir(expr_dir)):
+            if fn.lower().endswith(".png"):
+                out[os.path.splitext(fn)[0]] = Image.open(
+                    os.path.join(expr_dir, fn)).convert("RGBA")
+    if not out:
+        path = os.path.join(FULL_DIR, "body.png")
+        if os.path.exists(path):
+            base = Image.open(path).convert("RGBA")
+            out = {name: _body_variant(base, a, s, d)
+                   for name, (a, s, d) in BODY_POSES.items()}
+    return out
 
 
 class Pet:
