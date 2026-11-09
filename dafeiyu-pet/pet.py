@@ -395,7 +395,7 @@ class Pet:
         bowl_path = os.path.join(FULL_DIR, "props", "bowl.png")
         if os.path.exists(bowl_path):
             self.bowl_raw = Image.open(bowl_path).convert("RGBA")
-        self.bowl = self._fit_prop(self.bowl_raw, max_w * 0.46) if self.bowl_raw else None
+        self.bowl = self._fit_prop(self.bowl_raw, max_w * 0.40) if self.bowl_raw else None
 
         self.expr = "body_idle" if "body_idle" in self.sprites else "deyi"
         self.bubble_text = ""
@@ -760,12 +760,12 @@ class Pet:
         sy = self.CANVAS_H - ih - 24 + bob
         canvas.alpha_composite(img, (sx, sy))
 
-        # 干饭：碗端在胸前，一口一口往上送
+        # 干饭：碗端在胸前端着，一口一口往嘴边送
         if self.action == "eat" and self.bowl is not None:
             b = self.bowl
-            lift = (math.sin(now * 2.6) + 1.0) / 2.0
+            lift = (math.sin(now * 2.2) + 1.0) / 2.0
             bx = sx + iw // 2 - b.width // 2
-            by = sy + int(ih * 0.56) - int(lift * ih * 0.10)
+            by = sy + int(ih * 0.61) - int(lift * ih * 0.12)
             canvas.alpha_composite(b, (max(0, bx), max(0, by)))
 
         # 表情贴纸
