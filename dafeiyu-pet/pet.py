@@ -275,6 +275,10 @@ class Pet:
         self.sprites_raw = load_sprites()
         self.screen_w = user32.GetSystemMetrics(0)
         self.screen_h = user32.GetSystemMetrics(1)
+        # 任务栏之上的可用区域，让桌宠站在任务栏上面而不是被它盖住
+        wa = wt.RECT()
+        self.work_bottom = wa.bottom if user32.SystemParametersInfoW(
+            0x0030, 0, ctypes.byref(wa), 0) else self.screen_h
 
         self.scale = self.cfg.get("scale") or self._default_scale()
         self.default_scale = self._default_scale()
@@ -320,11 +324,14 @@ class Pet:
         return img.resize((w, h), Image.LANCZOS)
 
     def _load_cfg(self):
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
+        # 优先读程序目录（便携），没有再用系统配置目录
+        for path in (os.path.join(HERE, "config.json"), CONFIG_PATH):
+            try:
+                with open(path, "r", encoding="utf-8-sig") as f:
+                    return json.load(f)
+            except Exception:
+                continue
+        return {}
 
     def _save_cfg(self):
         data = {
@@ -345,7 +352,7 @@ class Pet:
         y = self.cfg.get("y")
         if isinstance(x, int) and isinstance(y, int) and -self.CANVAS_W < x < self.screen_w:
             return x, y
-        return self.screen_w - self.CANVAS_W - 36, self.screen_h - self.CANVAS_H - 10
+        return self.screen_w - self.CANVAS_W - 36, self.work_bottom - self.CANVAS_H - 4
 
     def _greeting(self):
         h = time.localtime().tm_hour
@@ -474,7 +481,7 @@ class Pet:
 
     def _snap_into_screen(self):
         self.x = int(max(-self.CANVAS_W // 2, min(self.x, self.screen_w - self.CANVAS_W // 2)))
-        self.y = int(max(-60, min(self.y, self.screen_h - 120)))
+        self.y = int(max(-60, min(self.y, self.work_bottom - 120)))
 
     def _set_expr(self, name, seconds):
         if name in self.sprites:
