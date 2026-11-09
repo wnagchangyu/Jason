@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """把 24 张半身表情的「五官」换到全身立绘上，生成一整套全身表情。
 
 做法：
@@ -25,8 +25,7 @@ FACE_BODY = (200, 240, 440, 380)
 FACE_SRC = {
     "deyi": (120, 150, 310, 275),      # 开心笑
     "shengqi": (120, 160, 305, 285),   # 生气
-    "haixiu": (170, 170, 340, 300),    # 害羞
-    "shuijiao": (125, 160, 295, 290),  # 睡着
+    "shuijiao": (152, 176, 292, 282),  # 睡着
     "wenhao": (125, 145, 315, 275),    # 疑惑
     "bixin": (125, 140, 335, 275),     # 比心
 }
@@ -59,8 +58,10 @@ def compose(head, body, box=None):
             (max(1, int((fx1 - fx0) * s2)), bh), Image.LANCZOS)
 
     mask = Image.new("L", face.size, 0)
-    ImageDraw.Draw(mask).ellipse([4, 4, face.width - 4, face.height - 4], fill=255)
-    mask = mask.filter(ImageFilter.GaussianBlur(5))
+    inset = max(0, int(min(face.width, face.height) * 0.02))
+    ImageDraw.Draw(mask).ellipse(
+        [inset, inset, face.width - inset, face.height - inset], fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(max(6, face.width // 34)))
 
     out = body.copy()
     out.paste(face, (x0 + (bw - face.width) // 2, y0 + (bh - face.height) // 2), mask)

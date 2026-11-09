@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """大肥鱼桌宠 · Dafeiyu Desktop Pet
 
 纯 Python + Win32 分层窗口实现：真·逐像素透明的置顶桌面宠物。
@@ -295,14 +295,14 @@ BODY_POSES = {
 
 BODY_ALIAS = {
     "deyi": "deyi", "ok": "deyi", "piaole": "deyi", "maozhua": "deyi",
-    "zaoshanghao": "deyi", "ganfan": "deyi", "huachi": "haixiu",
-    "bixin": "bixin", "haixiu": "haixiu", "toukan": "haixiu",
+    "zaoshanghao": "deyi", "ganfan": "deyi", "huachi": "deyi",
+    "bixin": "bixin", "toukan": "deyi",
     "shuijiao": "shuijiao", "tangping": "shuijiao", "yun": "shuijiao",
     "yaoqian": "shuijiao",
     "shengqi": "shengqi", "xianqi": "shengqi", "buyao": "shengqi",
     "xia": "wenhao", "zhenjing": "wenhao", "jiazai": "wenhao",
     "wenhao": "wenhao", "wuyu": "wenhao", "jiaban": "wenhao",
-    "qiurao": "haixiu",
+    "qiurao": "wenhao",
 }
 
 
