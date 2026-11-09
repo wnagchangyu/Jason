@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """大肥鱼桌宠 · Dafeiyu Desktop Pet
 
 纯 Python + Win32 分层窗口实现：真·逐像素透明的置顶桌面宠物。
@@ -386,6 +386,16 @@ class Pet:
         self.squash_len = 0.34
         self._snap = bool(os.environ.get("PET_SNAPSHOT"))
 
+        # 特殊动作：跑步 / 干饭
+        self.action = None
+        self.action_until = 0.0
+        self.action_dir = 1
+        self.bowl_raw = None
+        bowl_path = os.path.join(FULL_DIR, "props", "bowl.png")
+        if os.path.exists(bowl_path):
+            self.bowl_raw = Image.open(bowl_path).convert("RGBA")
+        self.bowl = self._fit_prop(self.bowl_raw, max_w * 0.46) if self.bowl_raw else None
+
         self.expr = "body_idle" if "body_idle" in self.sprites else "deyi"
         self.bubble_text = ""
         self.bubble_until = 0.0
@@ -418,6 +428,11 @@ class Pet:
     def _fit(self, img):
         w = max(1, int(img.width * self.scale))
         h = max(1, int(img.height * self.scale))
+        return img.resize((w, h), Image.LANCZOS)
+
+    def _fit_prop(self, img, target_w):
+        w = max(1, int(target_w))
+        h = max(1, int(img.height * w / img.width))
         return img.resize((w, h), Image.LANCZOS)
 
     def _load_cfg(self):
@@ -572,6 +587,22 @@ class Pet:
             return arr[cy, cx] > 24
         return False
 
+    def start_run(self, seconds=6.0):
+        """沿着屏幕跑一圈：加速、前倾、来回折返。"""
+        self.action = "run"
+        self.action_until = time.time() + seconds
+        self.action_dir = random.choice([-1, 1])
+        self._set_expr(random.choice(["deyi", "bixin"]), seconds)
+        self.say(random.choice(["跑起来——", "冲鸭！", "谁在追我？"]), 3)
+
+    def start_eat(self, seconds=8.0):
+        """干饭：碗端起来，一口一口往嘴边送。"""
+        self.action = "eat"
+        self.action_until = time.time() + seconds
+        self.wander_vx = 0.0
+        self._set_expr("deyi", seconds)
+        self.say(random.choice(["干饭时间到！", "大碗米饭，香！", "先吃饭再说。"]), 4)
+
     def _on_click(self):
         self.squash_until = time.time() + self.squash_len
         self._set_expr(random.choice(["wenhao", "zhenjing", "haixiu", "deyi", "bixin"]), 2)
@@ -609,6 +640,8 @@ class Pet:
             (6, "大小 → 小 / 中 / 大"),
             (10, f"{'√ ' if self.lively else '　'}待机小动作（晃/跳）"),
             (11, f"{'√ ' if self.stickers else '　'}表情贴纸"),
+            (12, "跑一圈"),
+            (13, "干饭（吃大米饭）"),
             (7, None),
             (8, "藏起来 10 分钟"),
             (9, "退出"),
@@ -651,6 +684,10 @@ class Pet:
                 self.sticker_name = None
             self._save_cfg()
             self.say("表情贴纸开啦" if self.stickers else "不看表情啦", 3)
+        elif cmd == 12:
+            self.start_run()
+        elif cmd == 13:
+            self.start_eat()
         elif cmd == 6:
             order = [0.65, 0.8, 1.0]
             base = self.default_scale
@@ -684,12 +721,16 @@ class Pet:
         sprite = self.sprites[self.expr]
         base_w, base_h = sprite.size
 
+        running = self.action == "run"
         walking = (abs(self.wander_vx) > 0.05) and not self.dragging
-        phase = now * (2.7 if walking else 1.6)
-        bob = 0 if self.dragging else int(round(
-            (4.5 if walking else 2.5) * self.scale * math.sin(phase)))
+        speed = 4.2 if running else (2.7 if walking else 1.6)
+        phase = now * speed
+        bob_amp = 6.0 if running else (4.5 if walking else 2.5)
+        bob = 0 if self.dragging else int(round(bob_amp * self.scale * math.sin(phase)))
         sway = 0.0 if self.dragging else (
             (2.4 if walking else 1.1) * math.sin(phase + 0.7) if self.lively else 0.0)
+        if running and not self.dragging:
+            sway += 8.0 * (1 if self.action_dir >= 0 else -1)
 
         # 点击：横向撑开、纵向压扁，然后回弹
         sx_k = sy_k = 1.0
@@ -712,6 +753,14 @@ class Pet:
         sx = cx - iw // 2
         sy = self.CANVAS_H - ih - 24 + bob
         canvas.alpha_composite(img, (sx, sy))
+
+        # 干饭：碗端在胸前，一口一口往上送
+        if self.action == "eat" and self.bowl is not None:
+            b = self.bowl
+            lift = (math.sin(now * 2.6) + 1.0) / 2.0
+            bx = sx + iw // 2 - b.width // 2
+            by = sy + int(ih * 0.56) - int(lift * ih * 0.10)
+            canvas.alpha_composite(b, (max(0, bx), max(0, by)))
 
         # 表情贴纸
         if self.stickers and self.sticker_name and now < self.sticker_until:
@@ -830,6 +879,24 @@ class Pet:
         threading.Thread(target=loop, daemon=True).start()
 
     def _tick(self, now):
+        # 特殊动作（跑步 / 干饭）
+        if self.action and now > self.action_until:
+            if self.action == "eat":
+                self.say("吃饱啦～", 3)
+            self.action = None
+            self.wander_vx = 0.0
+        if self.action == "run" and not self.dragging:
+            self.x = int(self.x + 7 * self.action_dir)
+            if self.x < -self.CANVAS_W // 3:
+                self.x = -self.CANVAS_W // 3
+                self.action_dir = 1
+            elif self.x > self.screen_w - self.CANVAS_W * 2 // 3:
+                self.x = self.screen_w - self.CANVAS_W * 2 // 3
+                self.action_dir = -1
+            user32.SetWindowPos(self.hwnd, -1, int(self.x), int(self.y), 0, 0,
+                                SWP_NOSIZE | SWP_NOACTIVATE)
+            return
+
         if self.expr_until and now > self.expr_until:
             self.expr = "body_idle" if "body_idle" in self.sprites else "deyi"
             self.expr_until = 0
@@ -862,13 +929,17 @@ class Pet:
                 if roll < 0.5:
                     self._set_expr(random.choice(["shuijiao", "tangping", "yun"]), 4)
             else:
-                if roll < 0.45:
+                if roll < 0.38:
                     self.say(random.choice(LINES_IDLE), 5)
-                elif roll < 0.75:
+                elif roll < 0.64:
                     self._set_expr(random.choice(list(self.sprites.keys())), 3)
-                elif roll < 0.9:
+                elif roll < 0.76:
                     self._set_expr(random.choice(["shuijiao", "tangping"]), 6)
                     self.say("摸鱼中，勿扰…", 5)
+                elif roll < 0.88:
+                    self.start_run(random.uniform(3, 6))
+                else:
+                    self.start_eat(random.uniform(7, 10))
 
     def run(self):
         msg = MSG()
