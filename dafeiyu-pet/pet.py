@@ -181,6 +181,10 @@ user32.LoadCursorW.argtypes = [wt.HINSTANCE, ctypes.c_void_p]
 user32.GetSystemMetrics.restype = ctypes.c_int
 user32.SystemParametersInfoW.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint]
 user32.PostMessageW.argtypes = [wt.HWND, ctypes.c_uint, wt.WPARAM, wt.LPARAM]
+user32.EnumWindows.restype = wt.BOOL
+user32.EnumWindows.argtypes = [ctypes.c_void_p, wt.LPARAM]
+user32.GetClassNameW.restype = ctypes.c_int
+user32.GetClassNameW.argtypes = [wt.HWND, ctypes.c_wchar_p, ctypes.c_int]
 
 try:
     # per-monitor v2，保证在 125%/150% 缩放下依然按物理像素绘制，不会糊
@@ -193,15 +197,25 @@ except Exception:
 
 
 def single_instance():
-    """同名互斥量，防止开出多只大肥鱼。"""
-    kernel32.CreateMutexW.restype = wt.HANDLE
-    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wt.BOOL, wt.LPCWSTR]
-    handle = kernel32.CreateMutexW(None, True, "Local\\DafeiyuDesktopPet")
-    if not handle:
-        return True  # 创建失败（极少见）就照常启动
-    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
-        return None
-    return handle
+    """启动时先把之前残留的桌宠窗口关掉，再自己登场。
+
+    以前用的是互斥量直接退出，结果旧实例没退出时新版本永远起不来。
+    """
+    closed = [0]
+
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def _cb(hwnd, _lparam):
+        buf = ctypes.create_unicode_buffer(64)
+        user32.GetClassNameW(hwnd, buf, 64)
+        if buf.value == "DafeiyuPetWindow":
+            user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+            closed[0] += 1
+        return True
+
+    user32.EnumWindows(_cb, 0)
+    if closed[0]:
+        time.sleep(0.8)
+    return closed[0]
 
 
 def log_exception(where):
@@ -755,8 +769,7 @@ class Pet:
 
 def main():
     try:
-        if single_instance() is None:
-            return
+        single_instance()
         pet = Pet()
         pet.run()
     except Exception:
