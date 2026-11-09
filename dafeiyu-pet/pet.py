@@ -21,7 +21,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SPRITE_DIR = os.path.join(HERE, "assets", "sprites")
-FULL_DIR = os.path.join(HERE, "assets", "full")
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA", HERE), "dafeiyu-pet")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
@@ -181,10 +180,6 @@ user32.LoadCursorW.argtypes = [wt.HINSTANCE, ctypes.c_void_p]
 user32.GetSystemMetrics.restype = ctypes.c_int
 user32.SystemParametersInfoW.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint]
 user32.PostMessageW.argtypes = [wt.HWND, ctypes.c_uint, wt.WPARAM, wt.LPARAM]
-user32.EnumWindows.restype = wt.BOOL
-user32.EnumWindows.argtypes = [ctypes.c_void_p, wt.LPARAM]
-user32.GetClassNameW.restype = ctypes.c_int
-user32.GetClassNameW.argtypes = [wt.HWND, ctypes.c_wchar_p, ctypes.c_int]
 
 try:
     # per-monitor v2，保证在 125%/150% 缩放下依然按物理像素绘制，不会糊
@@ -197,25 +192,15 @@ except Exception:
 
 
 def single_instance():
-    """启动时先把之前残留的桌宠窗口关掉，再自己登场。
-
-    以前用的是互斥量直接退出，结果旧实例没退出时新版本永远起不来。
-    """
-    closed = [0]
-
-    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
-    def _cb(hwnd, _lparam):
-        buf = ctypes.create_unicode_buffer(64)
-        user32.GetClassNameW(hwnd, buf, 64)
-        if buf.value == "DafeiyuPetWindow":
-            user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
-            closed[0] += 1
-        return True
-
-    user32.EnumWindows(_cb, 0)
-    if closed[0]:
-        time.sleep(0.8)
-    return closed[0]
+    """同名互斥量，防止开出多只大肥鱼。"""
+    kernel32.CreateMutexW.restype = wt.HANDLE
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wt.BOOL, wt.LPCWSTR]
+    handle = kernel32.CreateMutexW(None, True, "Local\\DafeiyuDesktopPet")
+    if not handle:
+        return True  # 创建失败（极少见）就照常启动
+    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+        return None
+    return handle
 
 
 def log_exception(where):
@@ -284,79 +269,12 @@ def load_sprites():
     return sprites
 
 
-# ---- 全身站姿（来自角色设定图）与它的姿势变体 ----
-BODY_POSES = {
-    "body_idle": (0.0, 1.0, 0.0),
-    "body_happy": (-3.0, 1.02, -6.0),
-    "body_shy": (3.0, 0.99, 4.0),
-    "body_hop": (0.0, 1.0, -14.0),
-    "body_lean": (-6.0, 1.0, 0.0),
-}
-
-BODY_ALIAS = {
-    "deyi": "deyi", "ok": "deyi", "piaole": "deyi", "maozhua": "deyi",
-    "zaoshanghao": "deyi", "ganfan": "deyi", "huachi": "deyi",
-    "bixin": "bixin", "toukan": "deyi",
-    "shuijiao": "shuijiao", "tangping": "shuijiao", "yun": "shuijiao",
-    "yaoqian": "shuijiao",
-    "shengqi": "shengqi", "xianqi": "shengqi", "buyao": "shengqi",
-    "xia": "wenhao", "zhenjing": "wenhao", "jiazai": "wenhao",
-    "wenhao": "wenhao", "wuyu": "wenhao", "jiaban": "wenhao",
-    "qiurao": "wenhao",
-}
-
-
-# 站姿 → 配哪张半身表情当贴纸
-BODY_STICKER = {
-    "body_idle": "deyi", "body_happy": "piaole", "body_shy": "haixiu",
-    "body_hop": "xia", "body_lean": "wenhao",
-}
-
-
-def _body_variant(base, angle=0.0, scale=1.0, dy=0.0):
-    w, h = base.size
-    img = base
-    if scale != 1.0:
-        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-    if angle != 0.0:
-        img = img.rotate(angle, resample=Image.BICUBIC, expand=False)
-    canvas = Image.new("RGBA", (w, h + 60), (0, 0, 0, 0))
-    canvas.alpha_composite(
-        img, (max(0, (w - img.width) // 2), 30 + int(dy) + (h - img.height)))
-    return canvas
-
-
-def load_body_sprites():
-    """全身表情：build_faces.py 生成的一组（同一身体，不同五官）。"""
-    expr_dir = os.path.join(FULL_DIR, "expressions")
-    out = {}
-    if os.path.isdir(expr_dir):
-        for fn in sorted(os.listdir(expr_dir)):
-            if fn.lower().endswith(".png"):
-                out[os.path.splitext(fn)[0]] = Image.open(
-                    os.path.join(expr_dir, fn)).convert("RGBA")
-    if not out:
-        path = os.path.join(FULL_DIR, "body.png")
-        if os.path.exists(path):
-            base = Image.open(path).convert("RGBA")
-            out = {name: _body_variant(base, a, s, d)
-                   for name, (a, s, d) in BODY_POSES.items()}
-    return out
-
-
 class Pet:
     def __init__(self):
         self.cfg = self._load_cfg()
-        self.heads_raw = load_sprites()            # 24 张半身表情（留作备用素材）
-        self.sprites_raw = load_body_sprites()     # 设定图切出来的全身站姿
-        if not self.sprites_raw:
-            self.sprites_raw = self.heads_raw
+        self.sprites_raw = load_sprites()
         self.screen_w = user32.GetSystemMetrics(0)
         self.screen_h = user32.GetSystemMetrics(1)
-        # 任务栏之上的可用区域，让桌宠站在任务栏上面而不是被它盖住
-        wa = wt.RECT()
-        self.work_bottom = wa.bottom if user32.SystemParametersInfoW(
-            0x0030, 0, ctypes.byref(wa), 0) else self.screen_h
 
         self.scale = self.cfg.get("scale") or self._default_scale()
         self.default_scale = self._default_scale()
@@ -365,39 +283,10 @@ class Pet:
 
         max_w = max(s.width for s in self.sprites.values())
         max_h = max(s.height for s in self.sprites.values())
-        self.CANVAS_W = int(max_w + max(60, max_h * 0.30) + 56)
+        self.CANVAS_W = int(max_w + 56)
         self.CANVAS_H = int(max_h + 320)
 
-        # 表情贴纸：从 24 张半身图里挑一张，被戳/说话时弹出来
-        self.stickers = self.cfg.get("stickers", True)
-        self.lively = self.cfg.get("lively", True)
-        self.antics = self.cfg.get("antics", True)
-        self.sticker_h = int(max_h * 0.52)
-        self.heads = {}
-        for name, img in self.heads_raw.items():
-            hh = self.sticker_h
-            ww = max(1, int(img.width * hh / img.height))
-            self.heads[name] = img.resize((ww, hh), Image.LANCZOS)
-        self.sticker_name = None
-        self.sticker_start = 0.0
-        self.sticker_until = 0.0
-
-        # 点击的挤压回弹
-        self.squash_until = 0.0
-        self.squash_len = 0.34
-        self._snap = bool(os.environ.get("PET_SNAPSHOT"))
-
-        # 特殊动作：跑步 / 干饭
-        self.action = None
-        self.action_until = 0.0
-        self.action_dir = 1
-        self.bowl_raw = None
-        bowl_path = os.path.join(FULL_DIR, "props", "bowl.png")
-        if os.path.exists(bowl_path):
-            self.bowl_raw = Image.open(bowl_path).convert("RGBA")
-        self.bowl = self._fit_prop(self.bowl_raw, max_w * 0.40) if self.bowl_raw else None
-
-        self.expr = "body_idle" if "body_idle" in self.sprites else "deyi"
+        self.expr = "deyi"
         self.bubble_text = ""
         self.bubble_until = 0.0
         self.dragging = False
@@ -417,13 +306,12 @@ class Pet:
         self._wndproc_ref = WNDPROC(self._wndproc)
         self._create_window()
         self.say(self._greeting(), 6)
-        self._set_expr("deyi", 5)
         self._start_anim()
 
     # ---------------- 基础工具 ----------------
     def _default_scale(self):
-        target = max(220, min(400, int(self.screen_h * 0.38)))
-        raw_h = max(img.height for img in self.sprites_raw.values())
+        target = max(220, min(360, int(self.screen_h * 0.40)))
+        raw_h = self.sprites_raw["deyi"].height
         return round(target / raw_h, 3)
 
     def _fit(self, img):
@@ -431,26 +319,17 @@ class Pet:
         h = max(1, int(img.height * self.scale))
         return img.resize((w, h), Image.LANCZOS)
 
-    def _fit_prop(self, img, target_w):
-        w = max(1, int(target_w))
-        h = max(1, int(img.height * w / img.width))
-        return img.resize((w, h), Image.LANCZOS)
-
     def _load_cfg(self):
-        # 优先读程序目录（便携），没有再用系统配置目录
-        for path in (os.path.join(HERE, "config.json"), CONFIG_PATH):
-            try:
-                with open(path, "r", encoding="utf-8-sig") as f:
-                    return json.load(f)
-            except Exception:
-                continue
-        return {}
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
 
     def _save_cfg(self):
         data = {
             "x": self.x, "y": self.y, "scale": self.scale,
             "wander": self.wander, "quiet": self.quiet,
-            "stickers": self.stickers, "lively": self.lively, "antics": self.antics,
         }
         for d in (CONFIG_DIR, HERE):
             try:
@@ -466,7 +345,7 @@ class Pet:
         y = self.cfg.get("y")
         if isinstance(x, int) and isinstance(y, int) and -self.CANVAS_W < x < self.screen_w:
             return x, y
-        return self.screen_w - self.CANVAS_W - 36, self.work_bottom - self.CANVAS_H - 4
+        return self.screen_w - self.CANVAS_W - 36, self.screen_h - self.CANVAS_H - 10
 
     def _greeting(self):
         h = time.localtime().tm_hour
@@ -588,46 +467,19 @@ class Pet:
             return arr[cy, cx] > 24
         return False
 
-    def start_run(self, seconds=6.0):
-        """沿着屏幕跑一圈：加速、前倾、来回折返。"""
-        self.action = "run"
-        self.action_until = time.time() + seconds
-        self.action_dir = random.choice([-1, 1])
-        self._set_expr(random.choice(["deyi", "bixin"]), seconds)
-        self.say(random.choice(["跑起来——", "冲鸭！", "谁在追我？"]), 3)
-
-    def start_eat(self, seconds=8.0):
-        """干饭：碗端起来，一口一口往嘴边送。"""
-        self.action = "eat"
-        self.action_until = time.time() + seconds
-        self.wander_vx = 0.0
-        self._set_expr("deyi", seconds)
-        self.say(random.choice(["干饭时间到！", "大碗米饭，香！", "先吃饭再说。"]), 4)
-
     def _on_click(self):
-        self.squash_until = time.time() + self.squash_len
         self._set_expr(random.choice(["wenhao", "zhenjing", "haixiu", "deyi", "bixin"]), 2)
         if not self.quiet:
             self.say(random.choice(LINES_CLICK), 4)
 
     def _snap_into_screen(self):
         self.x = int(max(-self.CANVAS_W // 2, min(self.x, self.screen_w - self.CANVAS_W // 2)))
-        self.y = int(max(-60, min(self.y, self.work_bottom - 120)))
-
-    def _show_sticker(self, name, seconds=2.4):
-        if not self.stickers or name not in self.heads:
-            return
-        self.sticker_name = name
-        self.sticker_start = time.time()
-        self.sticker_until = self.sticker_start + seconds
+        self.y = int(max(-60, min(self.y, self.screen_h - 120)))
 
     def _set_expr(self, name, seconds):
-        if name not in self.sprites:
-            name = BODY_ALIAS.get(name, "body_idle")
         if name in self.sprites:
             self.expr = name
             self.expr_until = time.time() + seconds
-        self._show_sticker(name if name in self.heads else BODY_STICKER.get(name, "deyi"), seconds)
 
     # ---------------- 右键菜单 ----------------
     def _show_menu(self):
@@ -639,11 +491,6 @@ class Pet:
             (4, f"{'√ ' if self.wander else '　'}随机走动"),
             (5, f"{'√ ' if self.quiet else '　'}安静模式"),
             (6, "大小 → 小 / 中 / 大"),
-            (10, f"{'√ ' if self.lively else '　'}待机小动作（晃/跳）"),
-            (11, f"{'√ ' if self.stickers else '　'}表情贴纸"),
-            (12, "跑一圈"),
-            (13, "干饭（吃大米饭）"),
-            (14, f"{'√ ' if self.antics else '　'}随机跑/干饭"),
             (7, None),
             (8, "藏起来 10 分钟"),
             (9, "退出"),
@@ -676,24 +523,6 @@ class Pet:
         elif cmd == 5:
             self.quiet = not self.quiet
             self._save_cfg()
-        elif cmd == 10:
-            self.lively = not self.lively
-            self._save_cfg()
-            self.say("活泼模式" if self.lively else "安静待机…", 3)
-        elif cmd == 11:
-            self.stickers = not self.stickers
-            if not self.stickers:
-                self.sticker_name = None
-            self._save_cfg()
-            self.say("表情贴纸开啦" if self.stickers else "不看表情啦", 3)
-        elif cmd == 12:
-            self.start_run()
-        elif cmd == 13:
-            self.start_eat()
-        elif cmd == 14:
-            self.antics = not self.antics
-            self._save_cfg()
-            self.say("会自己跑自己吃啦" if self.antics else "只等你点名～", 3)
         elif cmd == 6:
             order = [0.65, 0.8, 1.0]
             base = self.default_scale
@@ -725,73 +554,15 @@ class Pet:
         now = time.time()
 
         sprite = self.sprites[self.expr]
-        base_w, base_h = sprite.size
+        bob = 0 if self.dragging else int(round(3.0 * self.scale * math.sin(now * 1.9)))
 
-        running = self.action == "run"
-        walking = (abs(self.wander_vx) > 0.05) and not self.dragging
-        speed = 4.2 if running else (2.7 if walking else 1.6)
-        phase = now * speed
-        bob_amp = 6.0 if running else (4.5 if walking else 2.5)
-        bob = 0 if self.dragging else int(round(bob_amp * self.scale * math.sin(phase)))
-        sway = 0.0 if self.dragging else (
-            (2.4 if walking else 1.1) * math.sin(phase + 0.7) if self.lively else 0.0)
-        if running and not self.dragging:
-            sway += 8.0 * (1 if self.action_dir >= 0 else -1)
-
-        # 点击：横向撑开、纵向压扁，然后回弹
-        sx_k = sy_k = 1.0
-        if self.squash_until > now:
-            t = 1.0 - (self.squash_until - now) / self.squash_len
-            amp = math.sin(t * math.pi) * 0.09
-            sx_k, sy_k = 1.0 + amp, 1.0 - amp
-
-        img = sprite
-        if sx_k != 1.0 or sy_k != 1.0:
-            img = img.resize((max(1, int(base_w * sx_k)), max(1, int(base_h * sy_k))),
-                             Image.BILINEAR)
-        if abs(sway) > 0.05:
-            img = img.rotate(sway, resample=Image.BICUBIC, expand=False)
-
-        iw, ih = img.size
-        # 贴纸打开时整体左移一点，给右边留位置
-        room = int(self.sticker_h * 0.5) if self.stickers else 0
-        cx = self.CANVAS_W // 2 - room // 2
-        sx = cx - iw // 2
-        sy = self.CANVAS_H - ih - 24 + bob
-        canvas.alpha_composite(img, (sx, sy))
-
-        # 干饭：碗端在胸前端着，一口一口往嘴边送
-        if self.action == "eat" and self.bowl is not None:
-            b = self.bowl
-            lift = (math.sin(now * 2.2) + 1.0) / 2.0
-            bx = sx + iw // 2 - b.width // 2
-            by = sy + int(ih * 0.61) - int(lift * ih * 0.12)
-            canvas.alpha_composite(b, (max(0, bx), max(0, by)))
-
-        # 表情贴纸
-        if self.stickers and self.sticker_name and now < self.sticker_until:
-            head = self.heads[self.sticker_name]
-            t = now - self.sticker_start
-            remain = self.sticker_until - now
-            sc = 1.0
-            if t < 0.15:
-                sc = 0.5 + 0.5 * (t / 0.15)
-            elif t < 0.25:
-                sc = 1.06 - 0.06 * ((t - 0.15) / 0.10)
-            if sc != 1.0:
-                head = head.resize((max(1, int(head.width * sc)), max(1, int(head.height * sc))),
-                                   Image.BILINEAR)
-            if remain < 0.35:
-                head = head.copy()
-                f = max(0.0, remain / 0.35)
-                head.putalpha(head.getchannel("A").point(lambda v: int(v * f)))
-            px = sx + iw - int(head.width * 0.45)
-            px = max(0, min(px, self.CANVAS_W - head.width))
-            py = max(0, sy + int(ih * 0.03))
-            canvas.alpha_composite(head, (px, py))
+        sw, sh = sprite.size
+        sx = (self.CANVAS_W - sw) // 2
+        sy = self.CANVAS_H - sh - 24 + bob
+        canvas.alpha_composite(sprite, (sx, sy))
 
         if self.bubble_text and now < self.bubble_until:
-            self._draw_bubble(canvas, self.bubble_text, sx, sy, iw)
+            self._draw_bubble(canvas, self.bubble_text, sx, sy, sw)
         elif self.bubble_text and now >= self.bubble_until:
             self.bubble_text = ""
 
@@ -840,12 +611,6 @@ class Pet:
         canvas.alpha_composite(layer)
 
     def _push(self, canvas):
-        if getattr(self, "_snap", False):
-            self._snap = False
-            try:
-                canvas.save(os.path.join(HERE, "snapshot.png"))
-            except Exception:
-                pass
         arr = np.array(canvas, dtype=np.uint8)
         a = arr[:, :, 3]
         rgb = arr[:, :, :3].astype(np.uint32)
@@ -885,26 +650,8 @@ class Pet:
         threading.Thread(target=loop, daemon=True).start()
 
     def _tick(self, now):
-        # 特殊动作（跑步 / 干饭）
-        if self.action and now > self.action_until:
-            if self.action == "eat":
-                self.say("吃饱啦～", 3)
-            self.action = None
-            self.wander_vx = 0.0
-        if self.action == "run" and not self.dragging:
-            self.x = int(self.x + 7 * self.action_dir)
-            if self.x < -self.CANVAS_W // 3:
-                self.x = -self.CANVAS_W // 3
-                self.action_dir = 1
-            elif self.x > self.screen_w - self.CANVAS_W * 2 // 3:
-                self.x = self.screen_w - self.CANVAS_W * 2 // 3
-                self.action_dir = -1
-            user32.SetWindowPos(self.hwnd, -1, int(self.x), int(self.y), 0, 0,
-                                SWP_NOSIZE | SWP_NOACTIVATE)
-            return
-
         if self.expr_until and now > self.expr_until:
-            self.expr = "body_idle" if "body_idle" in self.sprites else "deyi"
+            self.expr = "deyi"
             self.expr_until = 0
 
         # 走动
@@ -935,17 +682,13 @@ class Pet:
                 if roll < 0.5:
                     self._set_expr(random.choice(["shuijiao", "tangping", "yun"]), 4)
             else:
-                if roll < 0.38:
+                if roll < 0.45:
                     self.say(random.choice(LINES_IDLE), 5)
-                elif roll < 0.64:
+                elif roll < 0.75:
                     self._set_expr(random.choice(list(self.sprites.keys())), 3)
-                elif roll < 0.76:
+                elif roll < 0.9:
                     self._set_expr(random.choice(["shuijiao", "tangping"]), 6)
                     self.say("摸鱼中，勿扰…", 5)
-                elif roll < 0.88 and self.antics:
-                    self.start_run(random.uniform(3, 6))
-                elif self.antics:
-                    self.start_eat(random.uniform(7, 10))
 
     def run(self):
         msg = MSG()
@@ -956,7 +699,8 @@ class Pet:
 
 def main():
     try:
-        single_instance()
+        if single_instance() is None:
+            return
         pet = Pet()
         pet.run()
     except Exception:
