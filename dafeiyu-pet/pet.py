@@ -306,6 +306,13 @@ BODY_ALIAS = {
 }
 
 
+# 站姿 → 配哪张半身表情当贴纸
+BODY_STICKER = {
+    "body_idle": "deyi", "body_happy": "piaole", "body_shy": "haixiu",
+    "body_hop": "xia", "body_lean": "wenhao",
+}
+
+
 def _body_variant(base, angle=0.0, scale=1.0, dy=0.0):
     w, h = base.size
     img = base
@@ -348,8 +355,26 @@ class Pet:
 
         max_w = max(s.width for s in self.sprites.values())
         max_h = max(s.height for s in self.sprites.values())
-        self.CANVAS_W = int(max_w + 56)
+        self.CANVAS_W = int(max_w + max(60, max_h * 0.30) + 56)
         self.CANVAS_H = int(max_h + 320)
+
+        # 表情贴纸：从 24 张半身图里挑一张，被戳/说话时弹出来
+        self.stickers = self.cfg.get("stickers", True)
+        self.lively = self.cfg.get("lively", True)
+        self.sticker_h = int(max_h * 0.52)
+        self.heads = {}
+        for name, img in self.heads_raw.items():
+            hh = self.sticker_h
+            ww = max(1, int(img.width * hh / img.height))
+            self.heads[name] = img.resize((ww, hh), Image.LANCZOS)
+        self.sticker_name = None
+        self.sticker_start = 0.0
+        self.sticker_until = 0.0
+
+        # 点击的挤压回弹
+        self.squash_until = 0.0
+        self.squash_len = 0.34
+        self._snap = bool(os.environ.get("PET_SNAPSHOT"))
 
         self.expr = "body_idle" if "body_idle" in self.sprites else "deyi"
         self.bubble_text = ""
@@ -371,6 +396,7 @@ class Pet:
         self._wndproc_ref = WNDPROC(self._wndproc)
         self._create_window()
         self.say(self._greeting(), 6)
+        self._set_expr("deyi", 5)
         self._start_anim()
 
     # ---------------- 基础工具 ----------------
@@ -398,6 +424,7 @@ class Pet:
         data = {
             "x": self.x, "y": self.y, "scale": self.scale,
             "wander": self.wander, "quiet": self.quiet,
+            "stickers": self.stickers, "lively": self.lively,
         }
         for d in (CONFIG_DIR, HERE):
             try:
@@ -536,6 +563,7 @@ class Pet:
         return False
 
     def _on_click(self):
+        self.squash_until = time.time() + self.squash_len
         self._set_expr(random.choice(["wenhao", "zhenjing", "haixiu", "deyi", "bixin"]), 2)
         if not self.quiet:
             self.say(random.choice(LINES_CLICK), 4)
@@ -544,12 +572,20 @@ class Pet:
         self.x = int(max(-self.CANVAS_W // 2, min(self.x, self.screen_w - self.CANVAS_W // 2)))
         self.y = int(max(-60, min(self.y, self.work_bottom - 120)))
 
+    def _show_sticker(self, name, seconds=2.4):
+        if not self.stickers or name not in self.heads:
+            return
+        self.sticker_name = name
+        self.sticker_start = time.time()
+        self.sticker_until = self.sticker_start + seconds
+
     def _set_expr(self, name, seconds):
         if name not in self.sprites:
             name = BODY_ALIAS.get(name, "body_idle")
         if name in self.sprites:
             self.expr = name
             self.expr_until = time.time() + seconds
+        self._show_sticker(name if name in self.heads else BODY_STICKER.get(name, "deyi"), seconds)
 
     # ---------------- 右键菜单 ----------------
     def _show_menu(self):
@@ -561,6 +597,8 @@ class Pet:
             (4, f"{'√ ' if self.wander else '　'}随机走动"),
             (5, f"{'√ ' if self.quiet else '　'}安静模式"),
             (6, "大小 → 小 / 中 / 大"),
+            (10, f"{'√ ' if self.lively else '　'}待机小动作（晃/跳）"),
+            (11, f"{'√ ' if self.stickers else '　'}表情贴纸"),
             (7, None),
             (8, "藏起来 10 分钟"),
             (9, "退出"),
@@ -593,6 +631,16 @@ class Pet:
         elif cmd == 5:
             self.quiet = not self.quiet
             self._save_cfg()
+        elif cmd == 10:
+            self.lively = not self.lively
+            self._save_cfg()
+            self.say("活泼模式" if self.lively else "安静待机…", 3)
+        elif cmd == 11:
+            self.stickers = not self.stickers
+            if not self.stickers:
+                self.sticker_name = None
+            self._save_cfg()
+            self.say("表情贴纸开啦" if self.stickers else "不看表情啦", 3)
         elif cmd == 6:
             order = [0.65, 0.8, 1.0]
             base = self.default_scale
@@ -624,15 +672,61 @@ class Pet:
         now = time.time()
 
         sprite = self.sprites[self.expr]
-        bob = 0 if self.dragging else int(round(3.0 * self.scale * math.sin(now * 1.9)))
+        base_w, base_h = sprite.size
 
-        sw, sh = sprite.size
-        sx = (self.CANVAS_W - sw) // 2
-        sy = self.CANVAS_H - sh - 24 + bob
-        canvas.alpha_composite(sprite, (sx, sy))
+        walking = (abs(self.wander_vx) > 0.05) and not self.dragging
+        phase = now * (2.7 if walking else 1.6)
+        bob = 0 if self.dragging else int(round(
+            (4.5 if walking else 2.5) * self.scale * math.sin(phase)))
+        sway = 0.0 if self.dragging else (
+            (2.4 if walking else 1.1) * math.sin(phase + 0.7) if self.lively else 0.0)
+
+        # 点击：横向撑开、纵向压扁，然后回弹
+        sx_k = sy_k = 1.0
+        if self.squash_until > now:
+            t = 1.0 - (self.squash_until - now) / self.squash_len
+            amp = math.sin(t * math.pi) * 0.09
+            sx_k, sy_k = 1.0 + amp, 1.0 - amp
+
+        img = sprite
+        if sx_k != 1.0 or sy_k != 1.0:
+            img = img.resize((max(1, int(base_w * sx_k)), max(1, int(base_h * sy_k))),
+                             Image.BILINEAR)
+        if abs(sway) > 0.05:
+            img = img.rotate(sway, resample=Image.BICUBIC, expand=False)
+
+        iw, ih = img.size
+        # 贴纸打开时整体左移一点，给右边留位置
+        room = int(self.sticker_h * 0.5) if self.stickers else 0
+        cx = self.CANVAS_W // 2 - room // 2
+        sx = cx - iw // 2
+        sy = self.CANVAS_H - ih - 24 + bob
+        canvas.alpha_composite(img, (sx, sy))
+
+        # 表情贴纸
+        if self.stickers and self.sticker_name and now < self.sticker_until:
+            head = self.heads[self.sticker_name]
+            t = now - self.sticker_start
+            remain = self.sticker_until - now
+            sc = 1.0
+            if t < 0.15:
+                sc = 0.5 + 0.5 * (t / 0.15)
+            elif t < 0.25:
+                sc = 1.06 - 0.06 * ((t - 0.15) / 0.10)
+            if sc != 1.0:
+                head = head.resize((max(1, int(head.width * sc)), max(1, int(head.height * sc))),
+                                   Image.BILINEAR)
+            if remain < 0.35:
+                head = head.copy()
+                f = max(0.0, remain / 0.35)
+                head.putalpha(head.getchannel("A").point(lambda v: int(v * f)))
+            px = sx + iw - int(head.width * 0.45)
+            px = max(0, min(px, self.CANVAS_W - head.width))
+            py = max(0, sy + int(ih * 0.03))
+            canvas.alpha_composite(head, (px, py))
 
         if self.bubble_text and now < self.bubble_until:
-            self._draw_bubble(canvas, self.bubble_text, sx, sy, sw)
+            self._draw_bubble(canvas, self.bubble_text, sx, sy, iw)
         elif self.bubble_text and now >= self.bubble_until:
             self.bubble_text = ""
 
@@ -681,6 +775,12 @@ class Pet:
         canvas.alpha_composite(layer)
 
     def _push(self, canvas):
+        if getattr(self, "_snap", False):
+            self._snap = False
+            try:
+                canvas.save(os.path.join(HERE, "snapshot.png"))
+            except Exception:
+                pass
         arr = np.array(canvas, dtype=np.uint8)
         a = arr[:, :, 3]
         rgb = arr[:, :, :3].astype(np.uint32)
