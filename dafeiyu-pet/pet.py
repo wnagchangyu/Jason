@@ -371,6 +371,7 @@ class Pet:
         # 表情贴纸：从 24 张半身图里挑一张，被戳/说话时弹出来
         self.stickers = self.cfg.get("stickers", True)
         self.lively = self.cfg.get("lively", True)
+        self.antics = self.cfg.get("antics", True)
         self.sticker_h = int(max_h * 0.52)
         self.heads = {}
         for name, img in self.heads_raw.items():
@@ -449,7 +450,7 @@ class Pet:
         data = {
             "x": self.x, "y": self.y, "scale": self.scale,
             "wander": self.wander, "quiet": self.quiet,
-            "stickers": self.stickers, "lively": self.lively,
+            "stickers": self.stickers, "lively": self.lively, "antics": self.antics,
         }
         for d in (CONFIG_DIR, HERE):
             try:
@@ -642,6 +643,7 @@ class Pet:
             (11, f"{'√ ' if self.stickers else '　'}表情贴纸"),
             (12, "跑一圈"),
             (13, "干饭（吃大米饭）"),
+            (14, f"{'√ ' if self.antics else '　'}随机跑/干饭"),
             (7, None),
             (8, "藏起来 10 分钟"),
             (9, "退出"),
@@ -688,6 +690,10 @@ class Pet:
             self.start_run()
         elif cmd == 13:
             self.start_eat()
+        elif cmd == 14:
+            self.antics = not self.antics
+            self._save_cfg()
+            self.say("会自己跑自己吃啦" if self.antics else "只等你点名～", 3)
         elif cmd == 6:
             order = [0.65, 0.8, 1.0]
             base = self.default_scale
@@ -936,9 +942,9 @@ class Pet:
                 elif roll < 0.76:
                     self._set_expr(random.choice(["shuijiao", "tangping"]), 6)
                     self.say("摸鱼中，勿扰…", 5)
-                elif roll < 0.88:
+                elif roll < 0.88 and self.antics:
                     self.start_run(random.uniform(3, 6))
-                else:
+                elif self.antics:
                     self.start_eat(random.uniform(7, 10))
 
     def run(self):
