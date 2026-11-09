@@ -2,6 +2,9 @@
 
 把「大肥鱼」放到你的 Windows 桌面上当桌宠：真·透明背景、始终置顶、能拖能戳会说话。
 
+**造型**：本体取自官方角色设定图的**正面全身站姿**（有裙摆、白丝、小皮鞋，会呼吸、会小跳、会歪头）。
+设定图原文件在 `assets/source/character_sheet.jpg`。
+
 ![预览](assets/preview.png)
 
 ## 快速开始
@@ -33,11 +36,13 @@
 
 ## 自定义
 
-- **加表情**：把新的白底立绘丢进表情包图库，或直接放到 `assets/raw/`，然后运行
+- **换本体**：把新的设定图放到 `assets/source/character_sheet.jpg`（正面视图在左上），跑
   ```
-  python build_assets.py
+  python build_body.py
   ```
-  会自动抠背景、裁边、生成 `assets/sprites/*.png`。
+  会裁出正面全身、去白底、生成 `assets/full/body.png`。裁剪范围在脚本里的 `CROP` 调。
+  歪头/蹦跳/害羞这几个姿势是运行时旋转缩放生成的，改 `pet.py` 的 `BODY_POSES`。
+- **24 张半身表情**：还在 `assets/sprites/` 里，暂时没用上，以后想加「说话时冒出表情」可以直接接。
 - **改台词**：打开 `pet.py`，改 `LINES_IDLE` / `LINES_CLICK` / `LINES_DRAG` / `LINES_GREET` 就行。
 - **改大小**：右键菜单「大小」，或编辑 `%APPDATA%\dafeiyu-pet\config.json` 里的 `scale`。
 - **换 Python**：快捷方式指向 `install.ps1` 里 `$cands` 的第一个存在的 pythonw。

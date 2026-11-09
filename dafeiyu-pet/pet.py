@@ -21,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SPRITE_DIR = os.path.join(HERE, "assets", "sprites")
+FULL_DIR = os.path.join(HERE, "assets", "full")
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA", HERE), "dafeiyu-pet")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
@@ -269,10 +270,56 @@ def load_sprites():
     return sprites
 
 
+# ---- 全身站姿（来自角色设定图）与它的姿势变体 ----
+BODY_POSES = {
+    "body_idle": (0.0, 1.0, 0.0),
+    "body_happy": (-3.0, 1.02, -6.0),
+    "body_shy": (3.0, 0.99, 4.0),
+    "body_hop": (0.0, 1.0, -14.0),
+    "body_lean": (-6.0, 1.0, 0.0),
+}
+
+BODY_ALIAS = {
+    "deyi": "body_happy", "ok": "body_happy", "piaole": "body_happy",
+    "bixin": "body_happy", "maozhua": "body_happy", "zaoshanghao": "body_happy",
+    "ganfan": "body_happy", "huachi": "body_happy",
+    "haixiu": "body_shy", "toukan": "body_shy", "shuijiao": "body_shy",
+    "tangping": "body_shy", "yun": "body_shy", "qiurao": "body_shy",
+    "yaoqian": "body_shy",
+    "xia": "body_hop", "zhenjing": "body_hop", "shengqi": "body_hop",
+    "jiazai": "body_lean", "wenhao": "body_lean", "wuyu": "body_lean",
+    "buyao": "body_lean", "xianqi": "body_lean", "jiaban": "body_lean",
+}
+
+
+def _body_variant(base, angle=0.0, scale=1.0, dy=0.0):
+    w, h = base.size
+    img = base
+    if scale != 1.0:
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+    if angle != 0.0:
+        img = img.rotate(angle, resample=Image.BICUBIC, expand=False)
+    canvas = Image.new("RGBA", (w, h + 60), (0, 0, 0, 0))
+    canvas.alpha_composite(
+        img, (max(0, (w - img.width) // 2), 30 + int(dy) + (h - img.height)))
+    return canvas
+
+
+def load_body_sprites():
+    path = os.path.join(FULL_DIR, "body.png")
+    if not os.path.exists(path):
+        return {}
+    base = Image.open(path).convert("RGBA")
+    return {name: _body_variant(base, a, s, d) for name, (a, s, d) in BODY_POSES.items()}
+
+
 class Pet:
     def __init__(self):
         self.cfg = self._load_cfg()
-        self.sprites_raw = load_sprites()
+        self.heads_raw = load_sprites()            # 24 张半身表情（留作备用素材）
+        self.sprites_raw = load_body_sprites()     # 设定图切出来的全身站姿
+        if not self.sprites_raw:
+            self.sprites_raw = self.heads_raw
         self.screen_w = user32.GetSystemMetrics(0)
         self.screen_h = user32.GetSystemMetrics(1)
         # 任务栏之上的可用区域，让桌宠站在任务栏上面而不是被它盖住
@@ -290,7 +337,7 @@ class Pet:
         self.CANVAS_W = int(max_w + 56)
         self.CANVAS_H = int(max_h + 320)
 
-        self.expr = "deyi"
+        self.expr = "body_idle" if "body_idle" in self.sprites else "deyi"
         self.bubble_text = ""
         self.bubble_until = 0.0
         self.dragging = False
@@ -314,8 +361,8 @@ class Pet:
 
     # ---------------- 基础工具 ----------------
     def _default_scale(self):
-        target = max(220, min(360, int(self.screen_h * 0.40)))
-        raw_h = self.sprites_raw["deyi"].height
+        target = max(220, min(400, int(self.screen_h * 0.38)))
+        raw_h = max(img.height for img in self.sprites_raw.values())
         return round(target / raw_h, 3)
 
     def _fit(self, img):
@@ -484,6 +531,8 @@ class Pet:
         self.y = int(max(-60, min(self.y, self.work_bottom - 120)))
 
     def _set_expr(self, name, seconds):
+        if name not in self.sprites:
+            name = BODY_ALIAS.get(name, "body_idle")
         if name in self.sprites:
             self.expr = name
             self.expr_until = time.time() + seconds
@@ -658,7 +707,7 @@ class Pet:
 
     def _tick(self, now):
         if self.expr_until and now > self.expr_until:
-            self.expr = "deyi"
+            self.expr = "body_idle" if "body_idle" in self.sprites else "deyi"
             self.expr_until = 0
 
         # 走动
